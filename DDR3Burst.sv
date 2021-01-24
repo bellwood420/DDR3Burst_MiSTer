@@ -199,7 +199,8 @@ localparam CONF_STR = {
 	"DDR3Burst;;",
 	"-;",
 	"O89,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
-	"O2,TV Mode,NTSC,PAL;",
+	"-;",
+	"R1,Stop;",
 	"-;",
 	"R0,Reset;",
 	"V,v",`BUILD_DATE 
@@ -249,26 +250,50 @@ assign DDRAM_ADDR = 28'h2400000;
 assign DDRAM_RD = 1'b0;
 assign DDRAM_BE = 8'h0F;
 assign DDRAM_DIN = {56'b0, data_cnt};
-assign DDRAM_WE = write_state;
+assign DDRAM_WE = write_state == 2'd1;
 
-reg write_state;
+reg [1:0] write_state; //0: interval, 1: write, 2: stop
 reg [7:0] data_cnt;
 
 always @(posedge clk_ddr3, posedge reset) begin
 	if (reset) begin
-		write_state <= 1'b0;
+		write_state <= 2'd0;
 		data_cnt <= 8'd0;
-	end else if (!write_state) begin
-			write_state <= 1'b1;
-	end else if (!DDRAM_BUSY) begin
+	end else if (write_state == 2'd0) begin
+		write_state <= 2'd1;
+	end else if (!DDRAM_BUSY && write_state == 2'd1) begin
 		if (data_cnt == DDRAM_BURSTCNT - 8'd1) begin
-			data_cnt <= 8'd0;
-			write_state <= 1'b0;
+			if (stop) begin
+				write_state <= 2'd2;
+			end else begin
+				data_cnt <= 8'd0;
+				write_state <= 2'd0;
+			end
 		end else begin
 			data_cnt <= data_cnt + 8'd1;
 		end
 	end
 end
+
+reg s1, s2, s3;
+always @(posedge clk_ddr3) begin
+	s1 <= status[1]; // Stop
+	s2 <= s1;
+	s3 <= s2;
+end
+
+reg stop;
+always @(posedge clk_ddr3, posedge reset) begin
+	if (reset) begin
+		stop <= 1'b0;
+	end else begin
+		if (~s2 & s3) begin
+			stop <= 1'b1;
+		end
+	end
+end
+
+assign enable_video = ~stop;
 
 //////////////////////////////////////////////////////////////////
 wire HBlank;
@@ -283,7 +308,7 @@ mycore mycore
 	.clk(clk_sys),
 	.reset(reset),
 	
-	.pal(status[2]),
+	.pal(1'b0),
 	.scandouble(forced_scandoubler),
 
 	.ce_pix(ce_pix),
@@ -302,9 +327,16 @@ assign CE_PIXEL = ce_pix;
 assign VGA_DE = ~(HBlank | VBlank);
 assign VGA_HS = HSync;
 assign VGA_VS = VSync;
-assign VGA_G  = write_state ? video : 8'hF;
-assign VGA_R  = write_state ? video : 8'hF;
-assign VGA_B  = write_state ? video : 8'hF;
+assign VGA_G  = e2 ? video : 8'h00;
+assign VGA_R  = e2 ? video : 8'h00;
+assign VGA_B  = e2 ? video : 8'hFF;
+
+reg e1, e2;
+always @(posedge clk_sys) begin
+	e1 <= enable_video;
+	e2 <= e1;
+end
+
 
 reg  [26:0] act_cnt;
 always @(posedge clk_sys) act_cnt <= act_cnt + 1'd1; 
