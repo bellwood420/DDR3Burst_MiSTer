@@ -200,7 +200,11 @@ localparam CONF_STR = {
 	"-;",
 	"O89,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"-;",
-	"R1,Stop;",
+	"O35,Wait cnt,0,2,4,8,16,32,64,128;",
+	"O6,Burst constant,initial,throughout;",
+	"-;",
+	"R1,Safe Stop;",
+	"R2,Unsafe Stop;",
 	"-;",
 	"R0,Reset;",
 	"V,v",`BUILD_DATE 
@@ -245,25 +249,58 @@ wire reset = RESET | status[0] | buttons[1];
 //////////////////////////////////////////////////////////////////
 
 assign DDRAM_CLK = clk_ddr3;
-assign DDRAM_BURSTCNT = 8'h80;
-assign DDRAM_ADDR = 28'h2400000;
+assign DDRAM_BURSTCNT = burst_cnt;
+assign DDRAM_ADDR = address;
 assign DDRAM_RD = 1'b0;
 assign DDRAM_BE = 8'h0F;
 assign DDRAM_DIN = {56'b0, data_cnt};
 assign DDRAM_WE = write_state == 2'd1;
 
-reg [1:0] write_state; //0: interval, 1: write, 2: stop
+reg [1:0] write_state; //0: wait, 1: write, 2: stop
 reg [7:0] data_cnt;
+reg [7:0] burst_cnt;
+reg [27:0] address;
+reg [9:0] wait_cnt;
+
+
+wire [9:0] wait_cnt_max;
+always_comb begin
+	case (status[5:3])
+		3'd0 : wait_cnt_max = 10'd0;
+		3'd1 : wait_cnt_max = 10'd2;
+		3'd2 : wait_cnt_max = 10'd4;
+		3'd3 : wait_cnt_max = 10'd8;
+		3'd4 : wait_cnt_max = 10'd16;
+		3'd5 : wait_cnt_max = 10'd32;
+		3'd6 : wait_cnt_max = 10'd64;
+		3'd7 : wait_cnt_max = 10'd128;
+		default :  wait_cnt_max = 10'd128;
+	endcase
+end
+
+localparam BURSTCNT = 8'h80;
+localparam ADDRESS = 28'h2400000;
+wire throughout_burst_constant = status[6];
 
 always @(posedge clk_ddr3, posedge reset) begin
 	if (reset) begin
 		write_state <= 2'd0;
 		data_cnt <= 8'd0;
+		burst_cnt <= 8'd0;
+		address <= 28'd0;
+		wait_cnt <= 10'd0;
 	end else if (write_state == 2'd0) begin
-		write_state <= 2'd1;
+		if (wait_cnt == wait_cnt_max) begin
+			write_state <= 2'd1;
+			burst_cnt <= BURSTCNT;
+			address <= ADDRESS;
+			wait_cnt <= 10'd0;
+		end else begin
+			wait_cnt <= wait_cnt + 10'd1;
+		end
 	end else if (!DDRAM_BUSY && write_state == 2'd1) begin
-		if (data_cnt == DDRAM_BURSTCNT - 8'd1) begin
-			if (stop) begin
+		if (data_cnt == BURSTCNT - 8'd1) begin
+			if (safe_stop) begin
 				write_state <= 2'd2;
 			end else begin
 				data_cnt <= 8'd0;
@@ -272,28 +309,53 @@ always @(posedge clk_ddr3, posedge reset) begin
 		end else begin
 			data_cnt <= data_cnt + 8'd1;
 		end
+		if (unsafe_stop) begin
+			write_state <= 2'd2;
+		end
+		burst_cnt <= throughout_burst_constant ? BURSTCNT : 8'd1;
+		address <= throughout_burst_constant ? ADDRESS : 8'd0;
+	end else if (unsafe_stop) begin
+		write_state <= 2'd2;
 	end
 end
 
-reg s1, s2, s3;
+reg ss1, ss2, ss3;
 always @(posedge clk_ddr3) begin
-	s1 <= status[1]; // Stop
-	s2 <= s1;
-	s3 <= s2;
+	ss1 <= status[1]; // Safe Stop
+	ss2 <= ss1;
+	ss3 <= ss2;
 end
 
-reg stop;
+reg safe_stop;
 always @(posedge clk_ddr3, posedge reset) begin
 	if (reset) begin
-		stop <= 1'b0;
+		safe_stop <= 1'b0;
 	end else begin
-		if (~s2 & s3) begin
-			stop <= 1'b1;
+		if (~ss2 & ss3) begin
+			safe_stop <= 1'b1;
 		end
 	end
 end
 
-assign enable_video = ~stop;
+reg us1, us2, us3;
+always @(posedge clk_ddr3) begin
+	us1 <= status[2]; // Unsafe Stop
+	us2 <= us1;
+	us3 <= us2;
+end
+
+reg unsafe_stop;
+always @(posedge clk_ddr3, posedge reset) begin
+	if (reset) begin
+		unsafe_stop <= 1'b0;
+	end else begin
+		if (~us2 & us3) begin
+			unsafe_stop <= 1'b1;
+		end
+	end
+end
+
+wire enable_video = ~(safe_stop | unsafe_stop | DDRAM_BUSY);
 
 //////////////////////////////////////////////////////////////////
 wire HBlank;
@@ -340,6 +402,6 @@ end
 
 reg  [26:0] act_cnt;
 always @(posedge clk_sys) act_cnt <= act_cnt + 1'd1; 
-assign LED_USER    = act_cnt[26]  ? act_cnt[25:18]  > act_cnt[7:0]  : act_cnt[25:18]  <= act_cnt[7:0];
+assign LED_USER    = DDRAM_BUSY;
 
 endmodule
