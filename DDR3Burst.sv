@@ -202,6 +202,7 @@ localparam CONF_STR = {
 	"-;",
 	"O35,Wait cnt,0,2,4,8,16,32,64,128;",
 	"O6,Burst constant,initial,throughout;",
+	"O7,Unsafe stop /w WE=1,no,yes;",
 	"-;",
 	"R1,Safe Stop;",
 	"R2,Unsafe Stop;",
@@ -254,7 +255,7 @@ assign DDRAM_ADDR = address;
 assign DDRAM_RD = 1'b0;
 assign DDRAM_BE = 8'h0F;
 assign DDRAM_DIN = {56'b0, data_cnt};
-assign DDRAM_WE = write_state == 2'd1;
+assign DDRAM_WE = write_state == 2'd1 || unsafe_stop_with_we;
 
 reg [1:0] write_state; //0: wait, 1: write, 2: stop
 reg [7:0] data_cnt;
@@ -281,6 +282,7 @@ end
 localparam BURSTCNT = 8'h80;
 localparam ADDRESS = 28'h2400000;
 wire throughout_burst_constant = status[6];
+wire unsafe_stop_with_we = status[7] & unsafe_stop;
 
 always @(posedge clk_ddr3, posedge reset) begin
 	if (reset) begin
