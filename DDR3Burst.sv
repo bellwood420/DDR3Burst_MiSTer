@@ -245,23 +245,36 @@ pll pll
 	.outclk_1(clk_ddr3)
 );
 
-wire reset = RESET | status[0] | buttons[1];
+wire reset = RESET;// | status[0] | buttons[1];
 
 //////////////////////////////////////////////////////////////////
+
+(* altera_attribute = {"-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS"} *) reg reset_0 = 1'b1;
+(* altera_attribute = {"-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS"} *) reg reset_1 = 1'b1;
+(* altera_attribute = {"-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS"} *) reg reset_2 = 1'b1;
+(* altera_attribute = {"-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS"} *) reg reset_3 = 1'b1;
+always @(posedge clk_ddr3) begin
+	reset_0 <= reset;
+	reset_1 <= reset_0;
+	reset_2 <= reset_1;
+	reset_3 <= reset_2;
+end
+
 
 assign DDRAM_CLK = clk_ddr3;
 assign DDRAM_BURSTCNT = burst_cnt;
 assign DDRAM_ADDR = address;
-assign DDRAM_RD = 1'b0;
+assign DDRAM_RD = rd;
 assign DDRAM_BE = 8'h0F;
 assign DDRAM_DIN = {56'b0, data_cnt};
-assign DDRAM_WE = write_state == 2'd1 || unsafe_stop_with_we;
+assign DDRAM_WE = 1'b0;
 
-reg [1:0] write_state; //0: wait, 1: write, 2: stop
+reg [1:0] read_state; //0: wait, 1: read, 2: stop
 reg [7:0] data_cnt;
 reg [7:0] burst_cnt;
 reg [27:0] address;
 reg [9:0] wait_cnt;
+reg rd;
 
 
 wire [9:0] wait_cnt_max;
@@ -284,40 +297,43 @@ localparam ADDRESS = 28'h2400000;
 wire throughout_burst_constant = status[6];
 wire unsafe_stop_with_we = status[7] & unsafe_stop;
 
-always @(posedge clk_ddr3, posedge reset) begin
-	if (reset) begin
-		write_state <= 2'd0;
+always @(posedge clk_ddr3) begin
+	if (reset_3) begin
+		read_state <= 2'd0;
 		data_cnt <= 8'd0;
 		burst_cnt <= 8'd0;
 		address <= 28'd0;
 		wait_cnt <= 10'd0;
-	end else if (write_state == 2'd0) begin
+		rd <= 1'b0;
+	end else if (read_state == 2'd0) begin
 		if (wait_cnt == wait_cnt_max) begin
-			write_state <= 2'd1;
+			read_state <= 2'd1;
 			burst_cnt <= BURSTCNT;
 			address <= ADDRESS;
+			rd <= 1'b1;
 			wait_cnt <= 10'd0;
 		end else begin
 			wait_cnt <= wait_cnt + 10'd1;
 		end
-	end else if (!DDRAM_BUSY && write_state == 2'd1) begin
+	end else if (!DDRAM_BUSY && DDRAM_DOUT_READY && read_state == 2'd1) begin
 		if (data_cnt == BURSTCNT - 8'd1) begin
 			if (safe_stop) begin
-				write_state <= 2'd2;
+				read_state <= 2'd2;
 			end else begin
 				data_cnt <= 8'd0;
-				write_state <= 2'd0;
+				read_state <= 2'd0;
 			end
 		end else begin
 			data_cnt <= data_cnt + 8'd1;
+			rd <= 1'b0;
 		end
 		if (unsafe_stop) begin
-			write_state <= 2'd2;
+			read_state <= 2'd2;
 		end
 		burst_cnt <= throughout_burst_constant ? BURSTCNT : 8'd1;
 		address <= throughout_burst_constant ? ADDRESS : 8'd0;
 	end else if (unsafe_stop) begin
-		write_state <= 2'd2;
+		read_state <= 2'd2;
 	end
 end
 

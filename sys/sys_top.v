@@ -531,28 +531,20 @@ always @(posedge FPGA_CLK2_50) begin
 	resetd2 <= resetd;
 end
 
-reg avalon_reset_req = 1'b0;
-reg once_latch = 1'b0;
+reg avalon_reset_req = 1'b1;
 
-always @(posedge FPGA_CLK2_50) begin
-	if (reset_req) begin
-		if (!once_latch) begin
-			avalon_reset_req <= 1'b1;
-			once_latch <= 1'b1;
-		end else if (once_latch && vw2) begin
-			avalon_reset_req <= 1'b1;
-		end
+reg r0 = 1'b1;
+reg r1 = 1'b1;
+
+always @(posedge clk_100m) begin
+	r0 <= reset_req;
+	r1 <= r0;
+
+	if (r1 && vbuf_read) begin
+		avalon_reset_req <= 1'b1;
 	end else begin
 		avalon_reset_req <= 1'b0;
 	end
-end
-
-reg vw1;
-reg vw2;
-
-always @(posedge FPGA_CLK2_50) begin
-	vw1 <= vbuf_write;
-	vw2 <= vw1;
 end
 
 ////////////////////  SYSTEM MEMORY & SCALER  /////////////////////////
