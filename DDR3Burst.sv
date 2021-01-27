@@ -245,9 +245,21 @@ pll pll
 	.outclk_1(clk_ddr3)
 );
 
-wire reset = RESET | status[0] | buttons[1];
+wire reset = RESET;// | status[0] | buttons[1];
 
 //////////////////////////////////////////////////////////////////
+
+(* altera_attribute = {"-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS"} *) reg reset_0 = 1'b1;
+(* altera_attribute = {"-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS"} *) reg reset_1 = 1'b1;
+(* altera_attribute = {"-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS"} *) reg reset_2 = 1'b1;
+(* altera_attribute = {"-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS"} *) reg reset_3 = 1'b1;
+always @(posedge clk_ddr3) begin
+	reset_0 <= reset;
+	reset_1 <= reset_0;
+	reset_2 <= reset_1;
+	reset_3 <= reset_2;
+end
+
 
 assign DDRAM_CLK = clk_ddr3;
 assign DDRAM_BURSTCNT = burst_cnt;
@@ -284,8 +296,8 @@ localparam ADDRESS = 28'h2400000;
 wire throughout_burst_constant = status[6];
 wire unsafe_stop_with_we = status[7] & unsafe_stop;
 
-always @(posedge clk_ddr3, posedge reset) begin
-	if (reset) begin
+always @(posedge clk_ddr3) begin
+	if (reset_3) begin
 		write_state <= 2'd0;
 		data_cnt <= 8'd0;
 		burst_cnt <= 8'd0;
