@@ -266,7 +266,7 @@ assign DDRAM_BURSTCNT = burst_cnt;
 assign DDRAM_ADDR = address;
 assign DDRAM_RD = rd;
 assign DDRAM_BE = 8'h0F;
-assign DDRAM_DIN = {56'b0, data_cnt};
+assign DDRAM_DIN = 64'd0;//{56'b0, data_cnt};
 assign DDRAM_WE = 1'b0;
 
 reg [1:0] read_state; //0: wait, 1: read, 2: stop
@@ -315,7 +315,7 @@ always @(posedge clk_ddr3) begin
 		end else begin
 			wait_cnt <= wait_cnt + 10'd1;
 		end
-	end else if (!DDRAM_BUSY && DDRAM_DOUT_READY && read_state == 2'd1) begin
+	end else if (DDRAM_DOUT_READY && read_state == 2'd1) begin
 		if (data_cnt == BURSTCNT - 8'd1) begin
 			if (safe_stop) begin
 				read_state <= 2'd2;
